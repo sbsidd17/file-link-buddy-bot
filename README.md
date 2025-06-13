@@ -1,73 +1,54 @@
-# Welcome to your Lovable project
 
-## Project info
+# File to Link Bot
 
-**URL**: https://lovable.dev/projects/5b8817be-7902-4c24-b653-abb05fcc777f
+A Telegram bot that converts files to direct download links with bulk link generation feature.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- ✅ Convert any Telegram file to direct download link
+- ✅ Stream videos online with built-in player
+- ✅ Bulk link generation - collect multiple files and get all links in a text file
+- ✅ Clean and user-friendly interface
+- ✅ Support for videos, documents, and other file types
 
-**Use Lovable**
+## Commands
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/5b8817be-7902-4c24-b653-abb05fcc777f) and start prompting.
+- `/start` - Start the bot and see available commands
+- `/bulk_links` - Start bulk file collection mode
+- `/get_bulk_link` - Get all collected files as download links in a text file
+- `/clear_bulk` - Clear your bulk file queue
 
-Changes made via Lovable will be committed automatically to this repo.
+## Setup
 
-**Use your preferred IDE**
+1. Set environment variables:
+   - `BOT_TOKEN` - Your bot token from BotFather
+   - `API_ID` - Your API ID from my.telegram.org
+   - `API_HASH` - Your API hash from my.telegram.org
+   - `BIN_CHANNEL` - Channel ID for storing files
+   - `STREAM_URL` - Your domain URL for streaming
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+3. Run the bot:
+   ```bash
+   python bot.py
+   ```
 
-Follow these steps:
+## Bulk Link Feature
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+1. Use `/bulk_links` command to start collecting files
+2. Send multiple files to the bot
+3. Use `/get_bulk_link` to receive a text file with all download links
+4. Format: `filename : download_url`
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Deployment
 
-# Step 3: Install the necessary dependencies.
-npm i
+- Deploy on Render.com using the provided `render.yaml`
+- Or use Docker with the provided `Dockerfile`
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+## License
 
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/5b8817be-7902-4c24-b653-abb05fcc777f) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+MIT License - Feel free to use and modify as needed.

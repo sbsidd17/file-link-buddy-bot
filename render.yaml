@@ -1,0 +1,22 @@
+
+services:
+  - type: web
+    plan: free
+    name: file2link
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    repo: https://github.com/sbsidd17/FileToLink      
+    branch: main
+    envVars:
+      - key: BOT_TOKEN 
+        sync: false
+      - key: API_ID 
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: BIN_CHANNEL
+        sync: false
+      - key: STREAM_URL
+        sync: false
+    autoDeploy: false
