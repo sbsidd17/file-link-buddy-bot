@@ -19,6 +19,7 @@ I am a Telegram Video Stream Bot. Send me any video and I will give you streamin
 • /bulk_links - Start bulk file collection
 • /get_bulk_link - Get all bulk links in a text file
 • /clear_bulk - Clear your bulk file queue
+• /exit_bulk - Exit bulk mode and return to normal mode
 
 **Powered By - @sdbots1**"""
     
@@ -39,7 +40,8 @@ async def bulk_links_start(client, message):
         "📋 **Commands:**\n"
         "• Send files - Add to bulk queue\n"
         "• /get_bulk_link - Get all links in a text file\n"
-        "• /clear_bulk - Clear your queue\n\n"
+        "• /clear_bulk - Clear your queue\n"
+        "• /exit_bulk - Exit bulk mode completely\n\n"
         f"**Current queue: {len(temp.BULK_FILES[user_id])} files**"
     )
 
@@ -79,45 +81,28 @@ async def clear_bulk_links(client, message):
     if user_id in temp.BULK_FILES:
         cleared_count = len(temp.BULK_FILES[user_id])
         temp.BULK_FILES[user_id] = []
-        await message.reply_text(f"✅ **Bulk queue cleared!**\n\nRemoved {cleared_count} files from your queue.")
+        await message.reply_text(f"✅ **Bulk queue cleared!**\n\nRemoved {cleared_count} files from your queue.\n\n💡 **Still in bulk mode** - Use /exit_bulk to return to normal mode.")
     else:
         await message.reply_text("❌ **No files to clear!**")
 
 
-async def copy_file_with_retry(client, message, max_retries=3):
-    """Copy file to BIN_CHANNEL with flood wait handling"""
-    for attempt in range(max_retries):
-        try:
-            # Add debugging log
-            print(f"Attempting to copy file to BIN_CHANNEL: {BIN_CHANNEL}")
-            
-            file_id = message.document or message.video
-            if not file_id:
-                print("No document or video found in message")
-                return None
-                
-            print(f"File found: {file_id.file_name}, Size: {file_id.file_size}")
-            
-            msg = await message.copy(
-                chat_id=BIN_CHANNEL,
-                caption=f"**File Name:** {file_id.file_name}\n\n**Requested By:** {message.from_user.mention}"
-            )
-            print(f"File copied successfully, message ID: {msg.id}")
-            return msg
-            
-        except FloodWait as e:
-            print(f"FloodWait: Sleeping for {e.value} seconds (attempt {attempt + 1}/{max_retries})")
-            await asyncio.sleep(e.value)
-            if attempt == max_retries - 1:
-                raise
-        except Exception as e:
-            print(f"Error copying file (attempt {attempt + 1}/{max_retries}): {e}")
-            if attempt == max_retries - 1:
-                raise
-            await asyncio.sleep(2)  # Wait 2 seconds before retry
+@Client.on_message(filters.command("exit_bulk") & filters.private)
+async def exit_bulk_mode(client, message):
+    user_id = message.from_user.id
     
-    return None
+    if user_id in temp.BULK_FILES:
+        # Remove user from bulk mode completely
+        del temp.BULK_FILES[user_id]
+        await message.reply_text(
+            "✅ **Successfully exited bulk mode!**\n\n"
+            "🔄 **Now in normal mode** - Send any file to get instant download links.\n\n"
+            "💡 Use /bulk_links to enter bulk mode again."
+        )
+    else:
+        await message.reply_text("❌ **You're not in bulk mode!**\n\nYou're already in normal mode. Send any file to get instant links.")
 
+
+# ... keep existing code (copy_file_with_retry function)
 
 @Client.on_message((filters.private) & (filters.document | filters.video), group=4)
 async def private_receive_handler(client, message):
@@ -133,10 +118,10 @@ async def private_receive_handler(client, message):
     # Check if user is in bulk mode
     if user_id in temp.BULK_FILES:
         try:
-            # Add rate limiting for bulk mode - wait 2 seconds between uploads
-            await asyncio.sleep(2)
+            # Add rate limiting for bulk mode - wait 3 seconds between uploads
+            await asyncio.sleep(3)
             
-            status_msg = await message.reply_text("⏳ **Processing file...**")
+            status_msg = await message.reply_text("⏳ **Processing file for bulk queue...**")
             
             # Copy file to bin channel with retry logic
             msg = await copy_file_with_retry(client, message)
@@ -159,7 +144,8 @@ async def private_receive_handler(client, message):
                     f"**File:** `{file_name}`\n"
                     f"**Queue position:** {len(temp.BULK_FILES[user_id])}\n\n"
                     f"📋 Use /get_bulk_link to get all links\n"
-                    f"🗑️ Use /clear_bulk to clear queue"
+                    f"🗑️ Use /clear_bulk to clear queue\n"
+                    f"🚪 Use /exit_bulk to exit bulk mode"
                 )
             else:
                 await status_msg.edit_text("❌ **Failed to process file. Please check if bot has access to the channel.**")
@@ -168,15 +154,18 @@ async def private_receive_handler(client, message):
             await message.reply_text(
                 f"⚠️ **Rate limit exceeded!**\n\n"
                 f"Please wait {e.value} seconds before sending next file.\n"
-                f"This helps prevent flooding Telegram servers."
+                f"This helps prevent flooding Telegram servers.\n\n"
+                f"💡 Use /exit_bulk to switch to normal mode."
             )
         except Exception as e:
             print(f"Error in bulk mode: {e}")
             await message.reply_text(f"❌ **Error processing file:** {str(e)}")
     else:
-        # Send instant link (original behavior)
+        # Send instant link (normal mode)
         try:
             print("Processing file in normal mode")
+            
+            status_msg = await message.reply_text("⏳ **Processing file...**")
             
             # Copy file to bin channel
             msg = await copy_file_with_retry(client, message)
@@ -189,7 +178,7 @@ async def private_receive_handler(client, message):
                 
                 print(f"Generated links - Watch: {d_play}, Download: {download}")
                 
-                await message.reply_text(
+                await status_msg.edit_text(
                     text=f"<b>Here Is Your Streamable Link\n\nFile Name</b>:\n<code>{file_name}</code>\n\n<b>Powered By - <a href=https://t.me/sdbots1>©sdBots</a></b>",
                     reply_markup=InlineKeyboardMarkup([
                         [
@@ -197,11 +186,10 @@ async def private_receive_handler(client, message):
                             InlineKeyboardButton("Download", url=download)
                         ]
                     ]),
-                    reply_to_message_id=message.id,
                     disable_web_page_preview=True
                 )
             else:
-                await message.reply_text("❌ **Failed to process file. Please check if bot has access to the channel.**")
+                await status_msg.edit_text("❌ **Failed to process file. Please check if bot has access to the channel.**")
                 
         except FloodWait as e:
             await message.reply_text(
