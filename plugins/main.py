@@ -1,4 +1,3 @@
-
 import os
 import io
 import asyncio
@@ -102,7 +101,37 @@ async def exit_bulk_mode(client, message):
         await message.reply_text("❌ **You're not in bulk mode!**\n\nYou're already in normal mode. Send any file to get instant links.")
 
 
-# ... keep existing code (copy_file_with_retry function)
+async def copy_file_with_retry(client, message, retries=3, delay=5):
+    for attempt in range(retries):
+        try:
+            # Determine if the message has a document or video
+            if message.document:
+                file_id = message.document.file_id
+            elif message.video:
+                file_id = message.video.file_id
+            else:
+                print("No document or video found in the message.")
+                return None
+
+            # Copy the message to the bin channel
+            msg = await client.copy_message(
+                chat_id=BIN_CHANNEL,
+                from_chat_id=message.chat.id,
+                message_id=message.id
+            )
+            return msg  # If successful, return the message object
+
+        except FloodWait as e:
+            print(f"FloodWait encountered, sleeping for {e.value} seconds.")
+            await asyncio.sleep(e.value)
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(delay)  # Wait before retrying
+            else:
+                print("Max retries reached. Could not copy the file.")
+                return None  # If all retries fail, return None
+
 
 @Client.on_message((filters.private) & (filters.document | filters.video), group=4)
 async def private_receive_handler(client, message):
