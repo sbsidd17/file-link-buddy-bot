@@ -1,14 +1,26 @@
+
 import os
 import io
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait
-from info import STREAM_URL, BIN_CHANNEL, temp
+from info import STREAM_URL, BIN_CHANNEL, ADMIN_ID, temp
+
+
+def is_authorized(user_id):
+    """Check if user is authorized (admin or in authorized users list)"""
+    return user_id == ADMIN_ID or user_id in temp.AUTHORIZED_USERS
 
 
 @Client.on_message(filters.command("start") & filters.private)
 async def start(client, message):
+    user_id = message.from_user.id
+    
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **Access Denied!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
+    
     start_text = f"""**Hello {message.from_user.mention},
 
 I am a Telegram Video Stream Bot. Send me any video and I will give you streaming & download link.
@@ -25,9 +37,96 @@ I am a Telegram Video Stream Bot. Send me any video and I will give you streamin
     await message.reply_text(start_text)
 
 
+@Client.on_message(filters.command("auth") & filters.private)
+async def auth_user(client, message):
+    user_id = message.from_user.id
+    
+    # Only admin can authorize users
+    if user_id != ADMIN_ID:
+        await message.reply_text("❌ **Access Denied!**\n\nOnly admin can authorize users.")
+        return
+    
+    try:
+        # Extract user ID from command
+        command_parts = message.text.split()
+        if len(command_parts) != 2:
+            await message.reply_text("**Usage:** `/auth <user_id>`\n\nExample: `/auth 123456789`")
+            return
+        
+        target_user_id = int(command_parts[1])
+        
+        if target_user_id in temp.AUTHORIZED_USERS:
+            await message.reply_text(f"✅ **User {target_user_id} is already authorized!**")
+            return
+        
+        # Add user to authorized list
+        temp.AUTHORIZED_USERS.add(target_user_id)
+        
+        await message.reply_text(f"✅ **User {target_user_id} has been authorized!**\n\nThey can now use the bot.")
+        
+    except ValueError:
+        await message.reply_text("❌ **Invalid user ID!**\n\nPlease provide a valid numeric user ID.")
+    except Exception as e:
+        await message.reply_text(f"❌ **Error:** {str(e)}")
+
+
+@Client.on_message(filters.command("unauth") & filters.private)
+async def unauth_user(client, message):
+    user_id = message.from_user.id
+    
+    # Only admin can unauthorize users
+    if user_id != ADMIN_ID:
+        await message.reply_text("❌ **Access Denied!**\n\nOnly admin can unauthorize users.")
+        return
+    
+    try:
+        # Extract user ID from command
+        command_parts = message.text.split()
+        if len(command_parts) != 2:
+            await message.reply_text("**Usage:** `/unauth <user_id>`\n\nExample: `/unauth 123456789`")
+            return
+        
+        target_user_id = int(command_parts[1])
+        
+        if target_user_id not in temp.AUTHORIZED_USERS:
+            await message.reply_text(f"❌ **User {target_user_id} is not in authorized list!**")
+            return
+        
+        # Remove user from authorized list
+        temp.AUTHORIZED_USERS.remove(target_user_id)
+        
+        await message.reply_text(f"✅ **User {target_user_id} has been removed from authorized list!**")
+        
+    except ValueError:
+        await message.reply_text("❌ **Invalid user ID!**\n\nPlease provide a valid numeric user ID.")
+    except Exception as e:
+        await message.reply_text(f"❌ **Error:** {str(e)}")
+
+
+@Client.on_message(filters.command("users") & filters.private)
+async def list_users(client, message):
+    user_id = message.from_user.id
+    
+    # Only admin can view authorized users
+    if user_id != ADMIN_ID:
+        await message.reply_text("❌ **Access Denied!**\n\nOnly admin can view authorized users.")
+        return
+    
+    if not temp.AUTHORIZED_USERS:
+        await message.reply_text("📝 **No authorized users found!**\n\nUse `/auth <user_id>` to authorize users.")
+        return
+    
+    users_list = "\n".join([f"• {user_id}" for user_id in temp.AUTHORIZED_USERS])
+    await message.reply_text(f"📋 **Authorized Users ({len(temp.AUTHORIZED_USERS)}):**\n\n{users_list}")
+
+
 @Client.on_message(filters.command("bulk_links") & filters.private)
 async def bulk_links_start(client, message):
     user_id = message.from_user.id
+    
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **Access Denied!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
     
     # Initialize bulk files list for user
     if user_id not in temp.BULK_FILES:
@@ -48,6 +147,10 @@ async def bulk_links_start(client, message):
 @Client.on_message(filters.command("get_bulk_link") & filters.private)
 async def get_bulk_links(client, message):
     user_id = message.from_user.id
+    
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **Access Denied!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
     
     if user_id not in temp.BULK_FILES or not temp.BULK_FILES[user_id]:
         await message.reply_text("❌ **No files in your bulk queue!**\n\nUse /bulk_links to start adding files.")
@@ -77,6 +180,10 @@ async def get_bulk_links(client, message):
 async def clear_bulk_links(client, message):
     user_id = message.from_user.id
     
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **Access Denied!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
+    
     if user_id in temp.BULK_FILES:
         cleared_count = len(temp.BULK_FILES[user_id])
         temp.BULK_FILES[user_id] = []
@@ -88,6 +195,10 @@ async def clear_bulk_links(client, message):
 @Client.on_message(filters.command("exit_bulk") & filters.private)
 async def exit_bulk_mode(client, message):
     user_id = message.from_user.id
+    
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **Access Denied!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
     
     if user_id in temp.BULK_FILES:
         # Remove user from bulk mode completely
@@ -136,6 +247,11 @@ async def copy_file_with_retry(client, message, retries=3, delay=5):
 @Client.on_message((filters.private) & (filters.document | filters.video), group=4)
 async def private_receive_handler(client, message):
     user_id = message.from_user.id
+    
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **You can't use this bot!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
+    
     file_id = message.document or message.video
     
     if not file_id:
@@ -232,4 +348,10 @@ async def private_receive_handler(client, message):
 
 @Client.on_message((filters.private) & (filters.photo | filters.audio), group=4)
 async def photo_audio_error(client, message):
+    user_id = message.from_user.id
+    
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **You can't use this bot!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
+    
     await message.reply_text("**Dude! Send me a video file.**")
