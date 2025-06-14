@@ -88,19 +88,30 @@ async def copy_file_with_retry(client, message, max_retries=3):
     """Copy file to BIN_CHANNEL with flood wait handling"""
     for attempt in range(max_retries):
         try:
+            # Add debugging log
+            print(f"Attempting to copy file to BIN_CHANNEL: {BIN_CHANNEL}")
+            
             file_id = message.document or message.video
+            if not file_id:
+                print("No document or video found in message")
+                return None
+                
+            print(f"File found: {file_id.file_name}, Size: {file_id.file_size}")
+            
             msg = await message.copy(
                 chat_id=BIN_CHANNEL,
                 caption=f"**File Name:** {file_id.file_name}\n\n**Requested By:** {message.from_user.mention}"
             )
+            print(f"File copied successfully, message ID: {msg.id}")
             return msg
+            
         except FloodWait as e:
             print(f"FloodWait: Sleeping for {e.value} seconds (attempt {attempt + 1}/{max_retries})")
             await asyncio.sleep(e.value)
             if attempt == max_retries - 1:
                 raise
         except Exception as e:
-            print(f"Error copying file: {e}")
+            print(f"Error copying file (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt == max_retries - 1:
                 raise
             await asyncio.sleep(2)  # Wait 2 seconds before retry
@@ -113,11 +124,17 @@ async def private_receive_handler(client, message):
     user_id = message.from_user.id
     file_id = message.document or message.video
     
+    if not file_id:
+        await message.reply_text("❌ **No valid file found. Please send a document or video file.**")
+        return
+    
+    print(f"Processing file from user {user_id}: {file_id.file_name}")
+    
     # Check if user is in bulk mode
     if user_id in temp.BULK_FILES:
         try:
-            # Add rate limiting for bulk mode - wait 1 second between uploads
-            await asyncio.sleep(1)
+            # Add rate limiting for bulk mode - wait 2 seconds between uploads
+            await asyncio.sleep(2)
             
             status_msg = await message.reply_text("⏳ **Processing file...**")
             
@@ -125,7 +142,7 @@ async def private_receive_handler(client, message):
             msg = await copy_file_with_retry(client, message)
             
             if msg:
-                file_name = file_id.file_name.replace(" ", "_")
+                file_name = file_id.file_name.replace(" ", "_") if file_id.file_name else f"file_{msg.id}"
                 online = f"{STREAM_URL}/watch/{msg.id}/{file_name}"
                 download = f"{STREAM_URL}/download/{msg.id}/{file_name}"
                 d_play = f"https://sidplayer.vercel.app?direct_link={download}"
@@ -145,7 +162,7 @@ async def private_receive_handler(client, message):
                     f"🗑️ Use /clear_bulk to clear queue"
                 )
             else:
-                await status_msg.edit_text("❌ **Failed to process file. Please try again.**")
+                await status_msg.edit_text("❌ **Failed to process file. Please check if bot has access to the channel.**")
                 
         except FloodWait as e:
             await message.reply_text(
@@ -155,18 +172,22 @@ async def private_receive_handler(client, message):
             )
         except Exception as e:
             print(f"Error in bulk mode: {e}")
-            await message.reply_text("❌ **Error processing file. Please try again.**")
+            await message.reply_text(f"❌ **Error processing file:** {str(e)}")
     else:
         # Send instant link (original behavior)
         try:
+            print("Processing file in normal mode")
+            
             # Copy file to bin channel
             msg = await copy_file_with_retry(client, message)
             
             if msg:
-                file_name = file_id.file_name.replace(" ", "_")
+                file_name = file_id.file_name.replace(" ", "_") if file_id.file_name else f"file_{msg.id}"
                 online = f"{STREAM_URL}/watch/{msg.id}/{file_name}"
                 download = f"{STREAM_URL}/download/{msg.id}/{file_name}"
                 d_play = f"https://sidplayer.vercel.app?direct_link={download}"
+                
+                print(f"Generated links - Watch: {d_play}, Download: {download}")
                 
                 await message.reply_text(
                     text=f"<b>Here Is Your Streamable Link\n\nFile Name</b>:\n<code>{file_name}</code>\n\n<b>Powered By - <a href=https://t.me/sdbots1>©sdBots</a></b>",
@@ -180,7 +201,7 @@ async def private_receive_handler(client, message):
                     disable_web_page_preview=True
                 )
             else:
-                await message.reply_text("❌ **Failed to process file. Please try again.**")
+                await message.reply_text("❌ **Failed to process file. Please check if bot has access to the channel.**")
                 
         except FloodWait as e:
             await message.reply_text(
@@ -189,7 +210,7 @@ async def private_receive_handler(client, message):
             )
         except Exception as e:
             print(f"Error in normal mode: {e}")
-            await message.reply_text("❌ **Error processing file. Please try again.**")
+            await message.reply_text(f"❌ **Error processing file:** {str(e)}")
 
 
 @Client.on_message((filters.private) & (filters.photo | filters.audio), group=4)
