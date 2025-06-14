@@ -32,6 +32,10 @@ I am a Telegram Video Stream Bot. Send me any video and I will give you streamin
 • /clear_bulk - Clear your bulk file queue
 • /exit_bulk - Exit bulk mode and return to normal mode
 
+**Group/Channel Commands:**
+• Reply to file: /link <count> - Get links for next files
+• Reply to file: /link_txt <count> - Get links in text file
+
 **Powered By - @sdbots1**"""
     
     await message.reply_text(start_text)
@@ -210,6 +214,221 @@ async def exit_bulk_mode(client, message):
         )
     else:
         await message.reply_text("❌ **You're not in bulk mode!**\n\nYou're already in normal mode. Send any file to get instant links.")
+
+
+@Client.on_message(filters.command("link") & (filters.group | filters.channel))
+async def group_link_handler(client, message):
+    user_id = message.from_user.id
+    
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **Access Denied!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
+    
+    # Check if message is a reply
+    if not message.reply_to_message:
+        await message.reply_text("❌ **Please reply to a file message to use this command!**\n\n**Usage:** Reply to file and use `/link 5` to get 5 file links")
+        return
+    
+    # Extract count from command
+    try:
+        command_parts = message.text.split()
+        if len(command_parts) != 2:
+            await message.reply_text("**Usage:** `/link <count>`\n\nExample: Reply to a file and use `/link 5`")
+            return
+        
+        count = int(command_parts[1])
+        if count <= 0 or count > 20:
+            await message.reply_text("❌ **Count must be between 1 and 20!**")
+            return
+        
+    except ValueError:
+        await message.reply_text("❌ **Invalid count! Please provide a number.**\n\nExample: `/link 5`")
+        return
+    
+    try:
+        chat_id = message.chat.id
+        replied_message_id = message.reply_to_message.id
+        
+        status_msg = await message.reply_text(f"⏳ **Processing {count} files starting from replied message...**")
+        
+        # Check if bot has admin permissions
+        try:
+            bot_member = await client.get_chat_member(chat_id, "me")
+            if not bot_member.privileges or not (bot_member.privileges.can_delete_messages or bot_member.status == "administrator"):
+                await status_msg.edit_text("❌ **Bot needs admin permissions in this chat to access message history!**")
+                return
+        except Exception as e:
+            await status_msg.edit_text("❌ **Cannot check bot permissions. Make sure bot is admin in this chat!**")
+            return
+        
+        # Get messages starting from replied message
+        processed_files = []
+        current_message_id = replied_message_id
+        
+        for i in range(count):
+            try:
+                # Add delay to prevent flood
+                if i > 0:
+                    await asyncio.sleep(2)
+                
+                # Get the current message
+                current_message = await client.get_messages(chat_id, current_message_id)
+                
+                # Check if message has file
+                if current_message and (current_message.document or current_message.video):
+                    file_id = current_message.document or current_message.video
+                    
+                    # Copy file to bin channel
+                    msg = await copy_file_with_retry(client, current_message)
+                    
+                    if msg:
+                        file_name = file_id.file_name.replace(" ", "_") if file_id.file_name else f"file_{msg.id}"
+                        download_url = f"{STREAM_URL}/download/{msg.id}/{file_name}"
+                        
+                        processed_files.append({
+                            'name': file_name,
+                            'url': download_url,
+                            'msg_id': current_message_id
+                        })
+                
+                # Move to next message
+                current_message_id += 1
+                
+            except Exception as e:
+                print(f"Error processing message {current_message_id}: {e}")
+                current_message_id += 1
+                continue
+        
+        if processed_files:
+            # Create response message
+            response_text = f"📋 **Generated {len(processed_files)} file links:**\n\n"
+            
+            for idx, file_data in enumerate(processed_files, 1):
+                response_text += f"{idx}. [{file_data['name']}]({file_data['url']})\n"
+            
+            response_text += f"\n**Powered By - @sdbots1**"
+            
+            await status_msg.edit_text(response_text, disable_web_page_preview=True)
+        else:
+            await status_msg.edit_text("❌ **No valid files found in the specified range!**")
+            
+    except Exception as e:
+        print(f"Error in group link handler: {e}")
+        await message.reply_text(f"❌ **Error processing files:** {str(e)}")
+
+
+@Client.on_message(filters.command("link_txt") & (filters.group | filters.channel))
+async def group_link_txt_handler(client, message):
+    user_id = message.from_user.id
+    
+    if not is_authorized(user_id):
+        await message.reply_text("❌ **Access Denied!**\n\nYou are not authorized to use this bot.\n\n📞 Contact the admin to get access.")
+        return
+    
+    # Check if message is a reply
+    if not message.reply_to_message:
+        await message.reply_text("❌ **Please reply to a file message to use this command!**\n\n**Usage:** Reply to file and use `/link_txt 9` to get 9 file links in text file")
+        return
+    
+    # Extract count from command
+    try:
+        command_parts = message.text.split()
+        if len(command_parts) != 2:
+            await message.reply_text("**Usage:** `/link_txt <count>`\n\nExample: Reply to a file and use `/link_txt 9`")
+            return
+        
+        count = int(command_parts[1])
+        if count <= 0 or count > 50:
+            await message.reply_text("❌ **Count must be between 1 and 50 for text file generation!**")
+            return
+        
+    except ValueError:
+        await message.reply_text("❌ **Invalid count! Please provide a number.**\n\nExample: `/link_txt 9`")
+        return
+    
+    try:
+        chat_id = message.chat.id
+        replied_message_id = message.reply_to_message.id
+        
+        status_msg = await message.reply_text(f"⏳ **Processing {count} files for text file generation...**")
+        
+        # Check if bot has admin permissions
+        try:
+            bot_member = await client.get_chat_member(chat_id, "me")
+            if not bot_member.privileges or not (bot_member.privileges.can_delete_messages or bot_member.status == "administrator"):
+                await status_msg.edit_text("❌ **Bot needs admin permissions in this chat to access message history!**")
+                return
+        except Exception as e:
+            await status_msg.edit_text("❌ **Cannot check bot permissions. Make sure bot is admin in this chat!**")
+            return
+        
+        # Get messages starting from replied message
+        processed_files = []
+        current_message_id = replied_message_id
+        
+        for i in range(count):
+            try:
+                # Add delay to prevent flood
+                if i > 0:
+                    await asyncio.sleep(2)
+                
+                # Update status every 5 files
+                if i % 5 == 0 and i > 0:
+                    await status_msg.edit_text(f"⏳ **Processing files... {i}/{count} completed**")
+                
+                # Get the current message
+                current_message = await client.get_messages(chat_id, current_message_id)
+                
+                # Check if message has file
+                if current_message and (current_message.document or current_message.video):
+                    file_id = current_message.document or current_message.video
+                    
+                    # Copy file to bin channel
+                    msg = await copy_file_with_retry(client, current_message)
+                    
+                    if msg:
+                        file_name = file_id.file_name.replace(" ", "_") if file_id.file_name else f"file_{msg.id}"
+                        download_url = f"{STREAM_URL}/download/{msg.id}/{file_name}"
+                        
+                        processed_files.append({
+                            'name': file_name,
+                            'url': download_url
+                        })
+                
+                # Move to next message
+                current_message_id += 1
+                
+            except Exception as e:
+                print(f"Error processing message {current_message_id}: {e}")
+                current_message_id += 1
+                continue
+        
+        if processed_files:
+            # Create text file content
+            txt_content = f"📁 Batch Download Links - {len(processed_files)} Files\n"
+            txt_content += f"Generated from: {message.chat.title or 'Group/Channel'}\n"
+            txt_content += f"Date: {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            
+            for idx, file_data in enumerate(processed_files, 1):
+                txt_content += f"{file_data['name']} : {file_data['url']}\n"
+            
+            # Create file buffer
+            file_content = txt_content.encode('utf-8')
+            file_buffer = io.BytesIO(file_content)
+            file_buffer.name = f"batch_links_{message.chat.id}_{replied_message_id}.txt"
+            
+            await status_msg.delete()
+            await message.reply_document(
+                document=file_buffer,
+                file_name=f"batch_links_{count}_files.txt",
+                caption=f"📋 **Batch Links Generated!**\n\n**Total Files:** {len(processed_files)}\n**Source:** {message.chat.title or 'Group/Channel'}\n\n**Powered By - @sdbots1**"
+            )
+        else:
+            await status_msg.edit_text("❌ **No valid files found in the specified range!**")
+            
+    except Exception as e:
+        print(f"Error in group link txt handler: {e}")
+        await message.reply_text(f"❌ **Error processing files:** {str(e)}")
 
 
 async def copy_file_with_retry(client, message, retries=3, delay=5):
