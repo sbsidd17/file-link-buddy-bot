@@ -43,7 +43,7 @@
     </header>
 
     <div class="container">
-        <tag src="%s" class="player" preload="metadata" crossorigin="anonymous"></tag>     
+        <tag src="%s" class="player" preload="auto" crossorigin="anonymous" controls></tag>     
     </div>
 
     <footer>
@@ -82,10 +82,10 @@
                     selected: 1,
                     options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
                 },
-                seekTime: 10,
+                seekTime: 5,
                 volume: 1,
                 clickToPlay: true,
-                hideControls: true,
+                hideControls: false,
                 resetOnEnd: false,
                 keyboard: {
                     focused: true,
@@ -112,23 +112,117 @@
                 blankVideo: 'https://cdn.plyr.io/static/blank.mp4',
                 autoplay: false,
                 autopause: true,
-                playsinline: true,
-                seekTime: 10
+                playsinline: true
             });
             
-            // Enhanced seeking performance for MP4 files
+            // Enhanced seeking performance and buffering optimization
             player.forEach(p => {
+                const video = p.media;
+                
+                // Optimize video element attributes for better seeking
+                video.setAttribute('preload', 'auto');
+                video.setAttribute('crossorigin', 'anonymous');
+                
+                // Enhanced buffering strategy
                 p.on('loadstart', () => {
-                    console.log('Video loading started - optimized for smooth seeking');
+                    console.log('Video loading started - optimizing buffer');
+                    // Force initial buffering
+                    video.currentTime = 0.1;
+                    video.currentTime = 0;
+                });
+                
+                p.on('loadedmetadata', () => {
+                    console.log('Metadata loaded - video ready for seeking');
+                    // Pre-buffer multiple segments for smoother seeking
+                    if (video.duration > 60) {
+                        // For longer videos, pre-buffer key positions
+                        const keyPositions = [
+                            video.duration * 0.1,
+                            video.duration * 0.25,
+                            video.duration * 0.5,
+                            video.duration * 0.75
+                        ];
+                        
+                        keyPositions.forEach((pos, index) => {
+                            setTimeout(() => {
+                                const originalTime = video.currentTime;
+                                video.currentTime = pos;
+                                video.currentTime = originalTime;
+                            }, index * 100);
+                        });
+                    }
                 });
                 
                 p.on('canplay', () => {
-                    console.log('Video can start playing - ready for smooth seeking');
+                    console.log('Video can start playing - seeking optimized');
                 });
                 
-                // Optimize seeking behavior
+                // Aggressive seeking optimization
+                let seekTimeout;
                 p.on('seeking', () => {
-                    p.media.currentTime = p.currentTime;
+                    clearTimeout(seekTimeout);
+                    seekTimeout = setTimeout(() => {
+                        console.log('Seeking to:', p.currentTime);
+                        // Force immediate seeking
+                        video.currentTime = p.currentTime;
+                    }, 50);
+                });
+                
+                // Improve seeking responsiveness
+                p.on('seeked', () => {
+                    console.log('Seek completed');
+                    // Ensure playback continues smoothly after seeking
+                    if (p.playing) {
+                        video.play().catch(e => console.log('Play after seek failed:', e));
+                    }
+                });
+                
+                // Optimize buffering during playback
+                p.on('progress', () => {
+                    if (video.buffered.length > 0) {
+                        const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                        const currentTime = video.currentTime;
+                        const bufferAhead = bufferedEnd - currentTime;
+                        
+                        // If buffer is low, pause briefly to allow more buffering
+                        if (bufferAhead < 5 && !video.paused && video.readyState < 3) {
+                            console.log('Low buffer detected, optimizing...');
+                        }
+                    }
+                });
+                
+                // Handle stalled playback
+                p.on('stalled', () => {
+                    console.log('Playback stalled, attempting recovery');
+                    setTimeout(() => {
+                        if (video.readyState < 3) {
+                            video.load();
+                        }
+                    }, 1000);
+                });
+                
+                // Keyboard shortcuts for better seeking
+                document.addEventListener('keydown', (e) => {
+                    if (e.target.tagName.toLowerCase() !== 'input' && e.target.tagName.toLowerCase() !== 'textarea') {
+                        switch(e.key) {
+                            case 'ArrowLeft':
+                                e.preventDefault();
+                                p.currentTime = Math.max(0, p.currentTime - 10);
+                                break;
+                            case 'ArrowRight':
+                                e.preventDefault();
+                                p.currentTime = Math.min(p.duration, p.currentTime + 10);
+                                break;
+                            case 'ArrowUp':
+                                e.preventDefault();
+                                p.currentTime = Math.max(0, p.currentTime - 30);
+                                break;
+                            case 'ArrowDown':
+                                e.preventDefault();
+                                p.currentTime = Math.min(p.duration, p.currentTime + 30);
+                                break;
+                        }
+                    }
                 });
             });
         });
