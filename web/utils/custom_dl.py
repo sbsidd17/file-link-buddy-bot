@@ -142,7 +142,7 @@ class TGCustomYield:
         return location
 
     async def yield_file(self, media_msg: Message, offset: int, first_part_cut: int,
-                         last_part_cut: int, part_count: int, chunk_size: int) -> Union[str, None]:
+                         last_part_cut: int, part_count: int, chunk_size: int):
         client = self.main_bot
         data = await self.generate_file_properties(media_msg)
         media_session = await self.generate_media_session(client, media_msg)
@@ -192,4 +192,3 @@ class TGCustomYield:
                     current_part += 1
         except Exception as e:
             print(f"Error in yield_file: {e}")
-            return None
