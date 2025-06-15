@@ -48,6 +48,7 @@ async def media_streamer(request, message_id: int):
     file_properties = await TGCustomYield().generate_file_properties(media_msg)
     file_size = file_properties.file_size
 
+    # Enhanced range request handling for better video seeking
     if range_header:
         from_bytes, until_bytes = range_header.replace('bytes=', '').split('-')
         from_bytes = int(from_bytes)
@@ -58,7 +59,13 @@ async def media_streamer(request, message_id: int):
 
     req_length = until_bytes - from_bytes
 
-    new_chunk_size = await chunk_size(req_length)
+    # Optimize chunk size for video streaming - larger chunks for better performance
+    if file_properties.mime_type and 'video' in file_properties.mime_type:
+        # Use larger chunks for video files to improve streaming performance
+        new_chunk_size = await chunk_size(min(req_length, 1024 * 1024))  # Max 1MB chunks for video
+    else:
+        new_chunk_size = await chunk_size(req_length)
+    
     offset = await offset_fix(from_bytes, new_chunk_size)
     first_part_cut = from_bytes - offset
     last_part_cut = (until_bytes % new_chunk_size) + 1
@@ -68,18 +75,32 @@ async def media_streamer(request, message_id: int):
     file_name = file_properties.file_name if file_properties.file_name else f"{secrets.token_hex(2)}.jpeg"
     mime_type = file_properties.mime_type if file_properties.mime_type else f"{mimetypes.guess_type(file_name)}"
 
+    # Enhanced headers for better video streaming and caching
+    headers = {
+        "Content-Type": mime_type,
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'attachment; filename="{file_name}"',
+    }
+    
+    # Add range headers for partial content
+    if range_header:
+        headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
+        headers["Content-Length"] = str(req_length + 1)
+    else:
+        headers["Content-Length"] = str(file_size)
+    
+    # Add caching and streaming optimization headers for video files
+    if mime_type and 'video' in mime_type:
+        headers.update({
+            "Cache-Control": "public, max-age=3600",
+            "Connection": "keep-alive",
+            "X-Content-Type-Options": "nosniff",
+        })
+
     return_resp = web.Response(
         status=206 if range_header else 200,
         body=body,
-        headers={
-            "Content-Type": mime_type,
-            "Content-Range": f"bytes {from_bytes}-{until_bytes}/{file_size}",
-            "Content-Disposition": f'attachment; filename="{file_name}"',
-            "Accept-Ranges": "bytes",
-        }
+        headers=headers
     )
-
-    if return_resp.status == 200:
-        return_resp.headers.add("Content-Length", str(file_size))
 
     return return_resp

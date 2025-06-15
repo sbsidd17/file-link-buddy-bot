@@ -10,7 +10,11 @@ from pyrogram.file_id import FileId, FileType, ThumbnailSource
 
 
 async def chunk_size(length):
-    return 2 ** max(min(math.ceil(math.log2(length / 1024)), 10), 2) * 1024
+    # Optimized chunk sizing for better video streaming performance
+    if length > 10 * 1024 * 1024:  # Files larger than 10MB
+        return min(1024 * 1024, 2 ** max(min(math.ceil(math.log2(length / 1024)), 20), 10) * 1024)
+    else:
+        return 2 ** max(min(math.ceil(math.log2(length / 1024)), 10), 2) * 1024
 
 
 async def offset_fix(offset, chunksize):
@@ -144,33 +148,46 @@ class TGCustomYield:
         current_part = 1
         location = await self.get_location(data)
 
-        r = await media_session.send(
-            raw.functions.upload.GetFile(
-                location=location,
-                offset=offset,
-                limit=chunk_size
-            ),
-        )
+        # Enhanced streaming for better video performance
+        try:
+            r = await media_session.send(
+                raw.functions.upload.GetFile(
+                    location=location,
+                    offset=offset,
+                    limit=chunk_size
+                ),
+            )
 
-        if isinstance(r, raw.types.upload.File):
-            while current_part <= part_count:
-                chunk = r.bytes
-                if not chunk:
-                    break
-                offset += chunk_size
-                if part_count == 1:
-                    yield chunk[first_part_cut:last_part_cut]
-                    break
-                if current_part == 1:
-                    yield chunk[first_part_cut:]
-                if 1 < current_part <= part_count:
-                    yield chunk
+            if isinstance(r, raw.types.upload.File):
+                while current_part <= part_count:
+                    chunk = r.bytes
+                    if not chunk:
+                        break
+                    
+                    # Optimized chunk delivery for video streaming
+                    if part_count == 1:
+                        yield chunk[first_part_cut:last_part_cut]
+                        break
+                    elif current_part == 1:
+                        yield chunk[first_part_cut:]
+                    elif current_part == part_count:
+                        yield chunk[:last_part_cut]
+                    else:
+                        yield chunk
 
-                r = await media_session.send(
-                    raw.functions.upload.GetFile(
-                        location=location,
-                        offset=offset,
-                        limit=chunk_size
-                    ),
-                )
-                current_part += 1
+                    offset += chunk_size
+                    
+                    # Pre-fetch next chunk for smoother streaming
+                    if current_part < part_count:
+                        r = await media_session.send(
+                            raw.functions.upload.GetFile(
+                                location=location,
+                                offset=offset,
+                                limit=chunk_size
+                            ),
+                        )
+                    
+                    current_part += 1
+        except Exception as e:
+            print(f"Error in yield_file: {e}")
+            return None

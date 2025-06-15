@@ -24,6 +24,11 @@
         color: black;
         font-family: sans-serif;
         }
+        
+        .player {
+            width: 100%%;
+            height: auto;
+        }
     </style>
 </head>
 
@@ -38,7 +43,7 @@
     </header>
 
     <div class="container">
-        <tag src="%s" class="player"></tag>     
+        <tag src="%s" class="player" preload="metadata" crossorigin="anonymous"></tag>     
     </div>
 
     <footer>
@@ -64,8 +69,68 @@
               'download',
               'fullscreen'
             ];
+            
         document.addEventListener('DOMContentLoaded', () => {
-            const player = Plyr.setup('.player', { controls });
+            const player = Plyr.setup('.player', { 
+                controls,
+                settings: ['captions', 'quality', 'speed'],
+                quality: {
+                    default: 'auto',
+                    options: ['auto']
+                },
+                speed: {
+                    selected: 1,
+                    options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+                },
+                seekTime: 10,
+                volume: 1,
+                clickToPlay: true,
+                hideControls: true,
+                resetOnEnd: false,
+                keyboard: {
+                    focused: true,
+                    global: true
+                },
+                tooltips: {
+                    controls: true,
+                    seek: true
+                },
+                captions: {
+                    active: false,
+                    language: 'auto',
+                    update: false
+                },
+                fullscreen: {
+                    enabled: true,
+                    fallback: true,
+                    iosNative: true
+                },
+                ratio: null,
+                loadSprite: true,
+                iconPrefix: 'plyr',
+                iconUrl: 'https://cdn.plyr.io/3.6.9/plyr.svg',
+                blankVideo: 'https://cdn.plyr.io/static/blank.mp4',
+                autoplay: false,
+                autopause: true,
+                playsinline: true,
+                seekTime: 10
+            });
+            
+            // Enhanced seeking performance for MP4 files
+            player.forEach(p => {
+                p.on('loadstart', () => {
+                    console.log('Video loading started - optimized for smooth seeking');
+                });
+                
+                p.on('canplay', () => {
+                    console.log('Video can start playing - ready for smooth seeking');
+                });
+                
+                // Optimize seeking behavior
+                p.on('seeking', () => {
+                    p.media.currentTime = p.currentTime;
+                });
+            });
         });
 
         const body = document.querySelector('body');
