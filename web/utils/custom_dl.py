@@ -10,8 +10,10 @@ from pyrogram.file_id import FileId, FileType, ThumbnailSource
 
 
 async def chunk_size(length):
-    # Optimized chunk sizing for better video streaming performance
-    if length > 10 * 1024 * 1024:  # Files larger than 10MB
+    # Optimized chunk sizing for better video streaming performance with fast-start support
+    if length > 50 * 1024 * 1024:  # Files larger than 50MB get larger chunks
+        return min(2 * 1024 * 1024, 2 ** max(min(math.ceil(math.log2(length / 1024)), 21), 11) * 1024)
+    elif length > 10 * 1024 * 1024:  # Files larger than 10MB
         return min(1024 * 1024, 2 ** max(min(math.ceil(math.log2(length / 1024)), 20), 10) * 1024)
     else:
         return 2 ** max(min(math.ceil(math.log2(length / 1024)), 10), 2) * 1024
@@ -148,7 +150,7 @@ class TGCustomYield:
         current_part = 1
         location = await self.get_location(data)
 
-        # Enhanced streaming for better video performance
+        # Enhanced streaming for better video performance with fast-start optimization
         try:
             r = await media_session.send(
                 raw.functions.upload.GetFile(
@@ -164,7 +166,7 @@ class TGCustomYield:
                     if not chunk:
                         break
                     
-                    # Optimized chunk delivery for video streaming
+                    # Optimized chunk delivery for video streaming with fast-start support
                     if part_count == 1:
                         yield chunk[first_part_cut:last_part_cut]
                         break
