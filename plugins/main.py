@@ -3,8 +3,8 @@ import os
 import io
 import asyncio
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors import FloodWait
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatType
+from pyrogram.errors import FloodWait, ChatAdminRequired, UserNotParticipant
 from info import STREAM_URL, BIN_CHANNEL, ADMIN_ID, temp
 import time
 from collections import defaultdict
@@ -105,7 +105,7 @@ class BulkQueue:
         if processed_files:
             # Create text file content
             txt_content = f"📁 Batch Download Links - {len(processed_files)} Files\n"
-            txt_content += f"Generated from: {message.chat.title or 'Group/Channel'}\n"
+            txt_content += f"Generated from: {message.chat.title or 'Channel/Group'}\n"
             txt_content += f"Date: {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
             
             for idx, file_data in enumerate(processed_files, 1):
@@ -117,18 +117,31 @@ class BulkQueue:
             file_buffer.name = f"batch_links_{message.chat.id}_{replied_message_id}.txt"
             
             await status_msg.delete()
-            await message.reply_document(
-                document=file_buffer,
-                file_name=f"batch_links_{count}_files.txt",
-                caption=f"📋 **Batch Links Generated!**\n\n**Total Files:** {len(processed_files)}\n**Source:** {message.chat.title or 'Group/Channel'}\n\n**Powered By - @sdbots1**"
-            )
+            
+            # Try to send in the same chat, if fails send to user privately
+            try:
+                await message.reply_document(
+                    document=file_buffer,
+                    file_name=f"batch_links_{count}_files.txt",
+                    caption=f"📋 **Batch Links Generated!**\n\n**Total Files:** {len(processed_files)}\n**Source:** {message.chat.title or 'Channel/Group'}\n\n**Powered By - @sdbots1**"
+                )
+            except Exception as e:
+                # If can't send in channel, send to user privately
+                try:
+                    await client.send_document(
+                        chat_id=message.from_user.id,
+                        document=file_buffer,
+                        file_name=f"batch_links_{count}_files.txt",
+                        caption=f"📋 **Batch Links Generated!**\n\n**Total Files:** {len(processed_files)}\n**Source:** {message.chat.title or 'Channel/Group'}\n**Note:** Sent privately because bot can't send files in the channel.\n\n**Powered By - @sdbots1**"
+                    )
+                except Exception as private_error:
+                    print(f"Failed to send document privately: {private_error}")
         else:
             await status_msg.edit_text("❌ **No valid files found in the specified range!**")
     
     async def process_link_task(self, task_data):
         """Process link task"""
         # Similar implementation to link_txt but without file generation
-        # Implementation would be similar to group_link_handler
         pass
 
 # Initialize queue system
@@ -138,6 +151,33 @@ bulk_queue = BulkQueue()
 def is_authorized(user_id):
     """Check if user is authorized (admin or in authorized users list)"""
     return user_id == ADMIN_ID or user_id in temp.AUTHORIZED_USERS
+
+
+async def check_channel_permissions(client, chat_id, user_id):
+    """Check if bot has necessary permissions in channel"""
+    try:
+        # Check if it's a channel
+        chat = await client.get_chat(chat_id)
+        if chat.type not in [ChatType.CHANNEL, ChatType.SUPERGROUP]:
+            return True  # Not a channel, no special checks needed
+        
+        # Check bot permissions
+        bot_member = await client.get_chat_member(chat_id, "me")
+        if not bot_member.privileges:
+            return False
+            
+        # Check if user is admin or has permissions
+        try:
+            user_member = await client.get_chat_member(chat_id, user_id)
+            if user_member.status in ["creator", "administrator"]:
+                return True
+        except Exception:
+            pass
+            
+        return bot_member.privileges.can_delete_messages or bot_member.status == "administrator"
+    except Exception as e:
+        print(f"Error checking channel permissions: {e}")
+        return False
 
 
 @Client.on_message(filters.command("start") & filters.private)
@@ -164,12 +204,19 @@ I am a Telegram Video Stream Bot. Send me any video and I will give you streamin
 • Reply to file: /link <count> - Get links for next files
 • Reply to file: /link_txt <count> - Get links in text file
 
+**Channel Usage Tips:**
+• Make sure bot is admin in channel
+• Use /link_txt for large batches (better for channels)
+• Files will be sent to you privately if bot can't send in channel
+
+**Getting Links from Other Bots:**
+• Forward files from URL uploader bots to this bot
+• Use /bulk_links mode for multiple files
+• Bot can process files from any source
+
 **Powered By - @sdbots1**"""
     
     await message.reply_text(start_text)
-
-
-# ... keep existing code (auth, unauth, users, bulk_links, get_bulk_links, clear_bulk, exit_bulk functions) the same ...
 
 
 @Client.on_message(filters.command("link_txt") & filters.private)
@@ -266,17 +313,12 @@ async def group_link_handler(client, message):
         chat_id = message.chat.id
         replied_message_id = message.reply_to_message.id
         
-        status_msg = await message.reply_text(f"⏳ **Processing {count} files starting from replied message...**")
-        
-        # Check if bot has admin permissions
-        try:
-            bot_member = await client.get_chat_member(chat_id, "me")
-            if not bot_member.privileges or not (bot_member.privileges.can_delete_messages or bot_member.status == "administrator"):
-                await status_msg.edit_text("❌ **Bot needs admin permissions in this chat to access message history!**")
-                return
-        except Exception as e:
-            await status_msg.edit_text("❌ **Cannot check bot permissions. Make sure bot is admin in this chat!**")
+        # Check channel permissions
+        if not await check_channel_permissions(client, chat_id, user_id):
+            await message.reply_text("❌ **Insufficient permissions!**\n\nBot needs admin permissions in this channel or you need to be an admin.")
             return
+        
+        status_msg = await message.reply_text(f"⏳ **Processing {count} files starting from replied message...**")
         
         # Get messages starting from replied message
         processed_files = []
@@ -325,7 +367,16 @@ async def group_link_handler(client, message):
             
             response_text += f"\n**Powered By - @sdbots1**"
             
-            await status_msg.edit_text(response_text, disable_web_page_preview=True)
+            try:
+                await status_msg.edit_text(response_text, disable_web_page_preview=True)
+            except Exception:
+                # If can't edit in channel, send to user privately
+                await client.send_message(
+                    chat_id=user_id,
+                    text=f"📋 **Links from {message.chat.title}:**\n\n{response_text}",
+                    disable_web_page_preview=True
+                )
+                await status_msg.edit_text("✅ **Links generated and sent to you privately!**")
         else:
             await status_msg.edit_text("❌ **No valid files found in the specified range!**")
             
@@ -366,6 +417,11 @@ async def group_link_txt_handler(client, message):
     chat_id = message.chat.id
     replied_message_id = message.reply_to_message.id
     
+    # Check channel permissions
+    if not await check_channel_permissions(client, chat_id, user_id):
+        await message.reply_text("❌ **Insufficient permissions!**\n\nBot needs admin permissions in this channel or you need to be an admin.")
+        return
+    
     status_msg = await message.reply_text(f"⏳ **Processing {count} files for text file generation...**")
     
     # Check if user has ongoing task, add to queue if yes
@@ -384,9 +440,6 @@ async def group_link_txt_handler(client, message):
         await status_msg.edit_text(f"📋 **Added to queue!**\n\n**Position:** {queue_position + 1}\n**Processing:** {count} files\n\n⏳ **Will start when current tasks complete...**")
     
     await bulk_queue.add_task(user_id, task_data)
-
-
-# ... keep existing code (copy_file_with_retry, private_receive_handler, photo_audio_error functions) the same ...
 
 
 async def copy_file_with_retry(client, message, retries=3, delay=5):
