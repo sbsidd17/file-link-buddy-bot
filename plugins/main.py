@@ -338,8 +338,8 @@ async def group_link_txt_handler(client, message):
             return
         
         count = int(command_parts[1])
-        if count <= 0 or count > 50:
-            await message.reply_text("❌ **Count must be between 1 and 50 for text file generation!**")
+        if count <= 0 or count > 200:
+            await message.reply_text("❌ **Count must be between 1 and 200 for text file generation!**")
             return
         
     except ValueError:
