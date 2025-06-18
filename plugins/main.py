@@ -3,8 +3,9 @@ import os
 import io
 import asyncio
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatType
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait, ChatAdminRequired, UserNotParticipant
+from pyrogram.enums import ChatType
 from info import STREAM_URL, BIN_CHANNEL, ADMIN_ID, temp
 import time
 from collections import defaultdict
