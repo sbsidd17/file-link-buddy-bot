@@ -1,4 +1,3 @@
-
 import os
 import io
 import asyncio
@@ -61,6 +60,7 @@ class BulkQueue:
         chat_id = task_data['chat_id']
         replied_message_id = task_data['replied_message_id']
         status_msg = task_data['status_msg']
+        base_name = task_data.get('base_name', f'batch_links_{chat_id}_{replied_message_id}')
         
         # Get messages starting from replied message
         processed_files = []
@@ -112,10 +112,10 @@ class BulkQueue:
             for idx, file_data in enumerate(processed_files, 1):
                 txt_content += f"{file_data['name']} : {file_data['url']}\n"
             
-            # Create file buffer
+            # Create file buffer with base name
             file_content = txt_content.encode('utf-8')
             file_buffer = io.BytesIO(file_content)
-            file_buffer.name = f"batch_links_{message.chat.id}_{replied_message_id}.txt"
+            file_buffer.name = f"{base_name}_links_{count}_files.txt"
             
             await status_msg.delete()
             
@@ -123,7 +123,7 @@ class BulkQueue:
             try:
                 await message.reply_document(
                     document=file_buffer,
-                    file_name=f"batch_links_{count}_files.txt",
+                    file_name=f"{base_name}_links_{count}_files.txt",
                     caption=f"📋 **Batch Links Generated!**\n\n**Total Files:** {len(processed_files)}\n**Source:** {message.chat.title or 'Channel/Group'}\n\n**Powered By - @sdbots1**"
                 )
             except Exception as e:
@@ -132,7 +132,7 @@ class BulkQueue:
                     await client.send_document(
                         chat_id=message.from_user.id,
                         document=file_buffer,
-                        file_name=f"batch_links_{count}_files.txt",
+                        file_name=f"{base_name}_links_{count}_files.txt",
                         caption=f"📋 **Batch Links Generated!**\n\n**Total Files:** {len(processed_files)}\n**Source:** {message.chat.title or 'Channel/Group'}\n**Note:** Sent privately because bot can't send files in the channel.\n\n**Powered By - @sdbots1**"
                     )
                 except Exception as private_error:
@@ -418,6 +418,16 @@ async def group_link_txt_handler(client, message):
     chat_id = message.chat.id
     replied_message_id = message.reply_to_message.id
     
+    # Get the replied file name for txt file naming
+    replied_file = message.reply_to_message.document or message.reply_to_message.video
+    if replied_file and replied_file.file_name:
+        # Clean the file name and remove extension for txt file prefix
+        base_name = replied_file.file_name.rsplit('.', 1)[0].replace(" ", "_")
+        # Limit length to avoid very long file names
+        base_name = base_name[:30] if len(base_name) > 30 else base_name
+    else:
+        base_name = f"files_from_msg_{replied_message_id}"
+    
     # Check channel permissions
     if not await check_channel_permissions(client, chat_id, user_id):
         await message.reply_text("❌ **Insufficient permissions!**\n\nBot needs admin permissions in this channel or you need to be an admin.")
@@ -433,7 +443,8 @@ async def group_link_txt_handler(client, message):
         'count': count,
         'chat_id': chat_id,
         'replied_message_id': replied_message_id,
-        'status_msg': status_msg
+        'status_msg': status_msg,
+        'base_name': base_name  # Add base name to task data
     }
     
     queue_position = len(bulk_queue.queues[user_id])
